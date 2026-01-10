@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coin Flipper</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="recreation-banner" role="note" aria-label="Recreation notice">
+      This is a recreation of
+      <a
+        href="https://store.steampowered.com/app/3925760/Unfair_Flips/"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="recreation-banner__link"
+        >Unfair Flips</a
+      >
+      to test Agentic Programming in Harper
+    </div>
+    <div id="winExplosion" class="win-explosion" aria-hidden="true"></div>
+    <div id="winModal" class="win-modal" aria-hidden="true">
+      <div class="win-modal__card" role="dialog" aria-modal="true" aria-label="You won">
+        <div class="win-modal__title">You did it.</div>
+        <div class="win-modal__subtitle">10 heads in a row.</div>
+        <div class="win-modal__actions">
+          <button class="primary" id="winKeepPlaying" type="button">Keep Playing</button>
+          <button class="secondary" id="winStartOver" type="button">Start Over</button>
+        </div>
+      </div>
+    </div>
+    <main class="layout">
+      <section class="panel">
+        <h1 id="titleChance">Chance of Heads: <span id="titleHeadsChance">20</span>%</h1>
+        <p class="subtitle">Tap the coin to flip heads 10 times in a row, please.</p>
+
+        <div class="coin" id="coin" aria-live="polite">
+          <div class="coin-inner" id="coinInner" aria-hidden="true">
+            <div class="coin-side coin-front">
+              <div class="face" id="faceFront">H</div>
+            </div>
+            <div class="coin-side coin-back">
+              <div class="face" id="faceBack">T</div>
+            </div>
+          </div>
+          <div class="coin-burst money" id="coinBurst" aria-hidden="true"></div>
+        </div>
+
+        <div class="controls">
+          <button class="primary" id="flip">Flip</button>
+        </div>
+
+        <!-- Heads chance is shown in the title now -->
+
+        <div class="stats">
+          <div class="stat">
+            <div class="label">Cash</div>
+            <div class="value cash-value" id="cash">
+              <span id="cashText">$0.00</span>
+              <span class="cash-bursts" id="cashBursts" aria-hidden="true"></span>
+            </div>
+          </div>
+          <div class="stat">
+            <div class="label">Heads</div>
+            <div class="value" id="heads">0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Tails</div>
+            <div class="value" id="tails">0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Total</div>
+            <div class="value" id="total">0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Heads in a row</div>
+            <div class="value" id="headsInARow">0</div>
+          </div>
+          <div class="stat">
+            <div class="label">Max heads streak</div>
+            <div class="value" id="maxHeadsStreak">0</div>
+          </div>
+        </div>
+
+        <section class="shop" aria-label="Shop">
+          <div class="shop-header">
+            <div class="shop-title">Shop</div>
+            <div class="shop-subtitle">Spend cash to upgrade your odds</div>
+          </div>
+
+          <div class="shop-items">
+            <button class="shop-item" id="buyHeadsChance" type="button">
+              <div class="shop-item-main">
+                <div class="shop-item-name">+5% heads chance</div>
+                <div class="shop-item-desc">Increases heads chance by 0.05</div>
+              </div>
+              <div class="shop-item-meta">
+                <span class="price">$0.10</span>
+              </div>
+            </button>
+
+            <button class="shop-item" id="buyFlipTime" type="button">
+              <div class="shop-item-main">
+                <div class="shop-item-name">-0.1s flip time</div>
+                <div class="shop-item-desc">Faster flips (min 0.1s)</div>
+              </div>
+              <div class="shop-item-meta">
+                <span class="price">$0.10</span>
+              </div>
+            </button>
+
+            <button class="shop-item" id="buyComboMult" type="button">
+              <div class="shop-item-main">
+                <div class="shop-item-name">+0.5x combo mult</div>
+                <div class="shop-item-desc">More $ per heads streak</div>
+              </div>
+              <div class="shop-item-meta">
+                <span class="price">$0.10</span>
+              </div>
+            </button>
+
+            <button class="shop-item" id="buyBaseWorth" type="button">
+              <div class="shop-item-main">
+                <div class="shop-item-name">Upgrade base coin worth</div>
+                <div class="shop-item-desc">Doubles $ earned per heads</div>
+              </div>
+              <div class="shop-item-meta">
+                <span class="price">$0.25</span>
+              </div>
+            </button>
+
+            <button class="shop-item" id="buyAutoFlip" type="button">
+              <div class="shop-item-main">
+                <div class="shop-item-name">Auto-flip</div>
+                <div class="shop-item-desc">Flips forever</div>
+              </div>
+              <div class="shop-item-meta">
+                <span class="price">$1000</span>
+              </div>
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <aside class="tray" aria-label="Flip log">
+        <div class="tray-header">
+          <div class="tray-title">Flip log</div>
+          <div class="tray-subtitle">Newest at the bottom</div>
+        </div>
+        <div class="tray-log" id="log" role="log" aria-live="polite" aria-relevant="additions"></div>
+      </aside>
+    </main>
+
+    <script src="index.js"></script>
+  </body>
+</html>
