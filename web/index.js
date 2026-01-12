@@ -24,6 +24,8 @@ const winExplosionEl = document.getElementById('winExplosion');
 const winModalEl = document.getElementById('winModal');
 const winKeepPlayingBtn = document.getElementById('winKeepPlaying');
 const winStartOverBtn = document.getElementById('winStartOver');
+const coinYearEl = document.getElementById('coinYear');
+const coinRimTextEl = document.getElementById('coinRimText');
 
 // Only show the 10-heads celebration once per page load (but let the user keep playing).
 let winShownEver = false;
@@ -438,6 +440,46 @@ updateShopUI();
 // Set initial coin faces (static labels for the two sides)
 if (faceFrontEl) faceFrontEl.textContent = 'H';
 if (faceBackEl) faceBackEl.textContent = 'T';
+// Set "mint year" on the heads side (use local time year)
+if (coinYearEl) coinYearEl.textContent = String(new Date().getFullYear());
+
+// Curve the rim text by splitting into characters and rotating them along an arc.
+// This keeps HTML simple and avoids SVG/canvas.
+function setupCoinRimTextArc() {
+	if (!coinRimTextEl) return;
+
+	// Use the original text content (including >), but preserve spaces.
+	const raw = (coinRimTextEl.textContent || '').trim();
+	if (!raw) return;
+
+	coinRimTextEl.textContent = '';
+
+	// Tweakable arc settings
+	const arcDeg = 150; // total degrees spanned by the text
+	const startDeg = -75; // where the first character starts (centered)
+
+	// Radius here is the distance from the "center point" for rotation.
+	// We'll set this via CSS variable so it scales with the coin size.
+	coinRimTextEl.style.setProperty('--arc', `${arcDeg}deg`);
+	coinRimTextEl.style.setProperty('--start', `${startDeg}deg`);
+
+	const chars = Array.from(raw);
+	const count = chars.length;
+	const step = count > 1 ? arcDeg / (count - 1) : 0;
+
+	chars.forEach((ch, i) => {
+		const span = document.createElement('span');
+		span.className = 'coin-rim-char';
+		span.textContent = ch;
+		// Keep spaces but still occupy width so spacing feels correct
+		if (ch === ' ') span.classList.add('space');
+		span.style.setProperty('--i', String(i));
+		span.style.setProperty('--rot', `${startDeg + step * i}deg`);
+		coinRimTextEl.appendChild(span);
+	});
+}
+
+setupCoinRimTextArc();
 
 if (buyHeadsChanceBtn) {
 	buyHeadsChanceBtn.addEventListener('click', () => {
