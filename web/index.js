@@ -91,7 +91,7 @@ const BASE_PRICE = {
 	// Base coin worth upgrade cost scales: $0.25 -> $2.50 -> $25 -> $250 -> ...
 	// (prices are in cents; pricing uses standard 10x exponent curve)
 	baseWorth: 25, // $0.25
-	autoFlip: 100000, // $1000.00
+	autoFlip: 10000, // $100.00
 };
 
 function priceFor(key) {
