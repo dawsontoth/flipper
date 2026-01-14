@@ -226,7 +226,7 @@ let autoFlipTimer = null;
 // upgrades: capped levels, price scales by 10x each purchase, reward stays constant
 const MAX_UPGRADES = 10;
 const MAX_HEADS_CHANCE_UPGRADES = 10;
-const MAX_FLIP_TIME_UPGRADES = 10;
+const MAX_FLIP_TIME_UPGRADES = 9;
 const MAX_COMBO_MULT_UPGRADES = 10;
 // baseWorth has 7 price points ($0.01 -> $100), which implies 6 purchases after the starting price
 const MAX_BASE_WORTH_UPGRADES = 10;
@@ -407,7 +407,7 @@ function logShopPurchase(message) {
 
 // --- Utility commands (typed anywhere) ---
 // /auto-flip            -> grants auto-flip upgrade for free (and turns it on)
-// /show-me-the-money    -> grants $100,000.00
+// /show-me-the-money    -> grants $100,000,000.00
 function handleUtilityCommand(cmdRaw) {
 	const cmd = String(cmdRaw || '').trim().toLowerCase();
 	if (!cmd.startsWith('/')) return false;
@@ -425,8 +425,8 @@ function handleUtilityCommand(cmdRaw) {
 	}
 
 	if (cmd === '/show-me-the-money') {
-		cashCents += 10000000; // $100,000.00
-		logShopPurchase('Cheat: +$100,000.00');
+		cashCents += 10000000000; // $100,000,000.00
+		logShopPurchase('Cheat: +$100,000,000.00');
 		updateStats();
 		updateShopUI();
 		return true;
