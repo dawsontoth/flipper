@@ -316,6 +316,7 @@ main {
 
 /* Shop purchase entries in the log (right-aligned blue bubble) */
 .log-line.shop {
+  margin-top: 0;
   margin-left: auto;
   background: rgba(37, 99, 235, 0.12);
   border-color: rgba(37, 99, 235, 0.35);
@@ -834,7 +835,7 @@ button:disabled {
   margin-top: 0.25rem;
 }
 
-.shop {
+section.shop {
   margin-top: 1rem;
   text-align: left;
   background: #f9fafb;
@@ -1111,7 +1112,7 @@ button:disabled {
     color: #f3f4f6;
   }
 
-  .shop {
+  section.shop {
     background: #0b1220;
     border-color: #1f2937;
   }
