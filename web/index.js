@@ -210,11 +210,11 @@ let autoFlipTimer = null;
 
 // upgrades: capped levels, price scales by 10x each purchase, reward stays constant
 const MAX_UPGRADES = 10;
-const MAX_HEADS_CHANCE_UPGRADES = 6;
-const MAX_FLIP_TIME_UPGRADES = 6;
-const MAX_COMBO_MULT_UPGRADES = 6;
+const MAX_HEADS_CHANCE_UPGRADES = 8;
+const MAX_FLIP_TIME_UPGRADES = 8;
+const MAX_COMBO_MULT_UPGRADES = 8;
 // baseWorth has 7 price points ($0.01 -> $100), which implies 6 purchases after the starting price
-const MAX_BASE_WORTH_UPGRADES = 6;
+const MAX_BASE_WORTH_UPGRADES = 8;
 let upgrades = {
 	headsChance: 0,
 	flipTime: 0,
@@ -320,7 +320,7 @@ function updateShopUI() {
 	if (buyFlipTimeBtn) {
 		const descEl = buyFlipTimeBtn.querySelector('.shop-item-desc');
 		if (descEl)
-			descEl.textContent = `-0.1s flip time (lvl ${upgrades.flipTime}/${MAX_FLIP_TIME_UPGRADES}, now ${(flipTimeMs / 1000).toFixed(2)}s, min 0.10s)`;
+			descEl.textContent = `-0.1s flip time (lvl ${upgrades.flipTime}/${MAX_FLIP_TIME_UPGRADES}, now ${(flipTimeMs / 1000).toFixed(2)}s)`;
 		const priceEl = buyFlipTimeBtn.querySelector('.price');
 		if (priceEl)
 			priceEl.textContent = upgradeAvailable('flipTime') ? formatCents(pFlipTime) : '';
@@ -672,9 +672,9 @@ if (buyBaseWorthBtn) {
 		if (!upgradeAvailable('baseWorth')) return;
 		purchase(priceFor('baseWorth'), () => {
 			// Upgrade base coin worth reward to scale:
-			// $0.01 -> $0.10 -> $1 -> $10 -> $25 -> $50 -> $100
+			// $0.01 -> $0.10 -> $1 -> $10 -> $25 -> $50 -> $100 -> $250 -> $500
 			// (values are in cents)
-			const steps = [1, 10, 100, 1000, 2500, 5000, 10000];
+			const steps = [1, 10, 100, 1000, 2500, 5000, 10000, 25000, 50000];
 			const nextLevel = Math.min(upgrades.baseWorth + 1, steps.length - 1);
 			baseWorthCents = steps[nextLevel];
 			upgrades.baseWorth++;
