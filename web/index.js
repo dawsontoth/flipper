@@ -672,9 +672,9 @@ if (buyBaseWorthBtn) {
 		if (!upgradeAvailable('baseWorth')) return;
 		purchase(priceFor('baseWorth'), () => {
 			// Upgrade base coin worth reward to scale:
-			// $0.01 -> $0.10 -> $1 -> $10 -> $25 -> $50 -> $100 -> $250 -> $500
+			// $0.01 -> $0.10 -> $1 -> $10 -> $25 -> $50 -> $100 -> $500 -> $1000
 			// (values are in cents)
-			const steps = [1, 10, 100, 1000, 2500, 5000, 10000, 25000, 50000];
+			const steps = [1, 10, 100, 1000, 2500, 5000, 10000, 50000, 100000];
 			const nextLevel = Math.min(upgrades.baseWorth + 1, steps.length - 1);
 			baseWorthCents = steps[nextLevel];
 			upgrades.baseWorth++;
