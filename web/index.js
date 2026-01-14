@@ -5,6 +5,143 @@ let headsInARow = 0;
 let maxHeadsStreak = 0;
 let cashCents = 0;
 
+// --- Persistent game state (server) ---
+// This app persists a single snapshot in Harper via the REST endpoint:
+//   GET /GameState/:id
+//   PUT /GameState/:id
+// The record shape is: { id: string, state: Any }
+const GAME_STATE_ID_KEY = 'GAME_STATE_ID';
+function getOrCreateGameStateId() {
+	try {
+		const existing = localStorage.getItem(GAME_STATE_ID_KEY);
+		if (existing) return existing;
+
+		// Prefer crypto-random if available
+		const id =
+			(typeof crypto !== 'undefined' && crypto.randomUUID)
+				? crypto.randomUUID()
+				: `gs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+
+		localStorage.setItem(GAME_STATE_ID_KEY, id);
+		return id;
+	} catch {
+		// If localStorage is blocked, fall back to an ephemeral ID (no persistence across reloads)
+		return `gs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+	}
+}
+const GAME_STATE_ID = getOrCreateGameStateId();
+let stateLoaded = false;
+let persistTimer = null;
+const PERSIST_DEBOUNCE_MS = 500;
+
+function buildStateSnapshot() {
+	return {
+		heads,
+		tails,
+		headsInARow,
+		maxHeadsStreak,
+		cashCents,
+		headsChance,
+		flipTimeMs,
+		comboMult,
+		baseWorthCents,
+		autoFlipEnabled,
+		upgrades,
+		// Keep these as "session only" (not persisted):
+		// flipping, winShownEver, autoFlipTimer, etc.
+	};
+}
+
+function applyStateSnapshot(s) {
+	if (!s || typeof s !== 'object') return;
+
+	heads = Number.isFinite(s.heads) ? s.heads : heads;
+	tails = Number.isFinite(s.tails) ? s.tails : tails;
+	headsInARow = Number.isFinite(s.headsInARow) ? s.headsInARow : headsInARow;
+	maxHeadsStreak = Number.isFinite(s.maxHeadsStreak) ? s.maxHeadsStreak : maxHeadsStreak;
+	cashCents = Number.isFinite(s.cashCents) ? s.cashCents : cashCents;
+
+	headsChance = Number.isFinite(s.headsChance) ? s.headsChance : headsChance;
+	flipTimeMs = Number.isFinite(s.flipTimeMs) ? s.flipTimeMs : flipTimeMs;
+	comboMult = Number.isFinite(s.comboMult) ? s.comboMult : comboMult;
+	baseWorthCents = Number.isFinite(s.baseWorthCents) ? s.baseWorthCents : baseWorthCents;
+
+	// upgrades object
+	if (s.upgrades && typeof s.upgrades === 'object') {
+		upgrades = {
+			...upgrades,
+			...s.upgrades,
+		};
+	}
+
+	// Autoplay: if the saved state says it should be enabled AND the upgrade is owned, restore it.
+	// (We do this after upgrades load.)
+	if (s.autoFlipEnabled && upgrades.autoFlip >= 1) startAutoFlip();
+}
+
+async function loadPersistedState() {
+	try {
+		const res = await fetch(`/GameState/${encodeURIComponent(GAME_STATE_ID)}`, {
+			method: 'GET',
+			headers: { Accept: 'application/json' },
+		});
+
+		// If there is no record yet, just start fresh.
+		if (res.status === 404) {
+			stateLoaded = true;
+			return;
+		}
+
+		if (!res.ok) throw new Error(`GET /GameState failed (${res.status})`);
+
+		const record = await res.json();
+		// record is expected to be: { id, state }
+		if (record && record.state != null) {
+			applyStateSnapshot(record.state);
+		}
+
+		stateLoaded = true;
+	} catch (err) {
+		// Non-fatal: game still works in-memory.
+		// eslint-disable-next-line no-console
+		console.warn('Failed to load persisted GameState:', err);
+		stateLoaded = true;
+	}
+}
+
+async function persistStateNow() {
+	// Only persist after we've attempted initial load (avoid overwriting server state on boot)
+	if (!stateLoaded) return;
+
+	const payload = {
+		id: GAME_STATE_ID,
+		state: buildStateSnapshot(),
+	};
+
+	try {
+		const res = await fetch(`/GameState/${encodeURIComponent(GAME_STATE_ID)}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+			body: JSON.stringify(payload),
+		});
+		if (!res.ok) throw new Error(`PUT /GameState failed (${res.status})`);
+	} catch (err) {
+		// eslint-disable-next-line no-console
+		console.warn('Failed to persist GameState:', err);
+	}
+}
+
+function schedulePersistIfChanged(prevSnapshot) {
+	// Compare snapshots to avoid extra writes (cheap + simple)
+	const next = buildStateSnapshot();
+	if (JSON.stringify(next) === JSON.stringify(prevSnapshot)) return;
+
+	if (persistTimer) clearTimeout(persistTimer);
+	persistTimer = setTimeout(() => {
+		persistStateNow();
+	}, PERSIST_DEBOUNCE_MS);
+}
+
 const flipButton = document.getElementById('flip');
 const faceFrontEl = document.getElementById('faceFront');
 const faceBackEl = document.getElementById('faceBack');
@@ -348,6 +485,7 @@ function burstMoney(text = '+$0.01') {
 
 async function flip() {
 	if (flipping) return;
+	const prevSnapshot = buildStateSnapshot();
 	// If the win modal is up, don't flip until user chooses Keep Playing
 	if (winModalEl && winModalEl.classList.contains('show')) return;
 	flipping = true;
@@ -385,6 +523,7 @@ async function flip() {
 	updateStats();
 	updateOddsUI();
 	updateShopUI();
+	schedulePersistIfChanged(prevSnapshot);
 
 	coinEl.classList.remove('flipping');
 	flipButton.disabled = false;
@@ -392,17 +531,20 @@ async function flip() {
 }
 
 function purchase(priceCents, onPurchase) {
+	const prevSnapshot = buildStateSnapshot();
 	if (!canAfford(priceCents)) return false;
 	cashCents -= priceCents;
 	onPurchase();
 	updateStats();
 	updateOddsUI();
 	updateShopUI();
+	schedulePersistIfChanged(prevSnapshot);
 	return true;
 }
 
 function startAutoFlip() {
 	if (autoFlipEnabled) return;
+	const prevSnapshot = buildStateSnapshot();
 	autoFlipEnabled = true;
 	if (autoFlipTimer) clearInterval(autoFlipTimer);
 	// Keep it simple: attempt a flip regularly; flip() will no-op if currently flipping.
@@ -411,13 +553,16 @@ function startAutoFlip() {
 	autoFlipTimer = setInterval(() => {
 		flip();
 	}, Math.max(120, flipTimeMs + bufferMs));
+	schedulePersistIfChanged(prevSnapshot);
 }
 
 function stopAutoFlip() {
+	const prevSnapshot = buildStateSnapshot();
 	autoFlipEnabled = false;
 	if (autoFlipTimer) clearInterval(autoFlipTimer);
 	autoFlipTimer = null;
 	updateShopUI();
+	schedulePersistIfChanged(prevSnapshot);
 }
 
 function toggleAutoFlip() {
@@ -431,11 +576,14 @@ flipButton.addEventListener('click', flip);
 coinEl.addEventListener('click', flip);
 // oddsGrowthEl removed from UI; keep heads chance display only
 
-// Initial state
-updateStats();
-setResult(null);
-updateOddsUI();
-updateShopUI();
+// Load persisted state first, then render initial UI
+(async () => {
+	await loadPersistedState();
+	updateStats();
+	setResult(null);
+	updateOddsUI();
+	updateShopUI();
+})();
 
 // Set initial coin faces (static labels for the two sides)
 if (faceFrontEl) faceFrontEl.textContent = 'H';
@@ -563,3 +711,19 @@ if (winStartOverBtn) {
 		window.location.reload();
 	});
 }
+
+// Try to persist any last changes on navigation (best-effort)
+window.addEventListener('beforeunload', () => {
+	// Avoid starting async work if we never loaded state, but if we did, attempt a final sync.
+	if (!stateLoaded) return;
+	// If supported, use sendBeacon to improve odds of delivery.
+	try {
+		const payload = JSON.stringify({ id: GAME_STATE_ID, state: buildStateSnapshot() });
+		if (navigator.sendBeacon) {
+			const blob = new Blob([payload], { type: 'application/json' });
+			navigator.sendBeacon(`/GameState/${encodeURIComponent(GAME_STATE_ID)}`, blob);
+		}
+	} catch {
+		// ignore
+	}
+});

@@ -1,0 +1,5 @@
+# Stores a persistent game state snapshot by id
+type GameState @table @export @sealed {
+  id: ID @primaryKey
+  state: Any!
+}
