@@ -707,9 +707,10 @@ h1 {
 .face {
   font-weight: 800;
   /* slightly larger + "engraved/embossed into coin" feel */
-  font-size: 5rem;
+  font-size: 6.25rem;
+  font-family: ui-serif, Georgia, "Times New Roman", Times, serif;
   /* keep it close to the coin metal so it reads as stamped, not painted */
-  color: rgba(255, 236, 200, 0.50);
+  color: rgba(255, 236, 200, 0.42);
   letter-spacing: 0.05em;
   /* engraved look: dark top-left edge, light bottom-right edge */
   text-shadow:
