@@ -7,6 +7,7 @@
   "scripts": {
     "start": "harperdb run .",
     "dev": "harperdb dev .",
+    "hairper": "hairper",
     "deploy": "npx -y dotenv-cli -- harperdb deploy . restart=rolling replicated=true"
   }
 }

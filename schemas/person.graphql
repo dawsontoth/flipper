@@ -1,0 +1,6 @@
+## For example, the following creates a table with a REST endpoint.
+type Person @table @export @sealed {
+    id: ID @primaryKey
+    name: String! @indexed
+    tag: String! @indexed
+}
