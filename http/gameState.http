@@ -1,3 +1,7 @@
 ### List
 # @no-log
 GET http://localhost:9962/GameState/
+
+### One
+# @no-log
+GET http://localhost:9962/GameState/default
