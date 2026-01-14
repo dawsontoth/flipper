@@ -33,6 +33,10 @@ const GAME_STATE_ID = getOrCreateGameStateId();
 let stateLoaded = false;
 let persistTimer = null;
 const PERSIST_DEBOUNCE_MS = 500;
+// Ensure that auto-save will still occur at least once every N ms,
+// even if state changes keep happening (debounce would otherwise delay forever).
+const PERSIST_MAX_WAIT_MS = 10_000;
+let persistMaxTimer = null;
 
 function buildStateSnapshot() {
 	return {
@@ -137,7 +141,18 @@ function schedulePersistIfChanged(prevSnapshot) {
 	if (JSON.stringify(next) === JSON.stringify(prevSnapshot)) return;
 
 	if (persistTimer) clearTimeout(persistTimer);
+	if (!persistMaxTimer) {
+		persistMaxTimer = setTimeout(() => {
+			persistMaxTimer = null;
+			// Flush whatever the latest state is at this point
+			persistStateNow();
+		}, PERSIST_MAX_WAIT_MS);
+	}
 	persistTimer = setTimeout(() => {
+		if (persistMaxTimer) {
+			clearTimeout(persistMaxTimer);
+			persistMaxTimer = null;
+		}
 		persistStateNow();
 	}, PERSIST_DEBOUNCE_MS);
 }
