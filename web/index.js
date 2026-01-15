@@ -38,6 +38,100 @@ const PERSIST_DEBOUNCE_MS = 500;
 const PERSIST_MAX_WAIT_MS = 10_000;
 let persistMaxTimer = null;
 
+// --- WebSocket transport for persisted game state ---
+let ws = null;
+let wsReady = false;
+let wsQueue = [];
+let wsReconnectTimer = null;
+let wsConnecting = false;
+
+function wsUrl(pathname) {
+	// Same host/port as the page, but WS protocol
+	const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+	return `${proto}//${location.host}${pathname}`;
+}
+
+function wsSend(obj) {
+	const payload = JSON.stringify(obj);
+	if (ws && wsReady) ws.send(payload);
+	else wsQueue.push(payload);
+}
+
+function flushWsQueue() {
+	if (!ws || !wsReady) return;
+	const q = wsQueue;
+	wsQueue = [];
+	for (const msg of q) ws.send(msg);
+}
+
+function connectGameStateWS() {
+	// Guard against repeated initialization / reconnect storms
+	if (wsConnecting) return;
+	if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+	wsConnecting = true;
+
+	// Use the same resource as REST (Harper supports concurrent protocols per resource)
+	const url = wsUrl('/GameState/' + GAME_STATE_ID);
+	try {
+		ws = new WebSocket(url);
+	} catch (e) {
+		// if WS is blocked, we keep running in-memory
+		console.warn('Failed to create WebSocket:', e);
+		wsConnecting = false;
+		return;
+	}
+
+	wsReady = false;
+
+	ws.addEventListener('open', () => {
+		wsConnecting = false;
+		wsReady = true;
+		flushWsQueue();
+		// Load the server state immediately on connect
+		wsSend({type: 'get', id: GAME_STATE_ID});
+	});
+
+	ws.addEventListener('message', (evt) => {
+		let msg = null;
+		try {
+			msg = JSON.parse(evt.data);
+		} catch {
+			return;
+		}
+		if (!msg || typeof msg !== 'object') return;
+
+		// Server pushes: {type:'state', id, state}
+		if (msg.type === 'get' && msg.id === GAME_STATE_ID) {
+			// First state message can be null (no record yet)
+			if (msg?.state) applyStateSnapshot(msg.state);
+			if (!stateLoaded) {
+				stateLoaded = true;
+				updateStats();
+				setResult(null);
+				updateOddsUI();
+				updateShopUI();
+			}
+		}
+	});
+
+	ws.addEventListener('close', () => {
+		wsConnecting = false;
+		wsReady = false;
+		// Best-effort reconnect
+		if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+		// Exponential-ish backoff (capped) to avoid tight reconnect loops
+		const delay = 1500;
+		wsReconnectTimer = setTimeout(() => connectGameStateWS(), delay);
+	});
+
+	ws.addEventListener('error', () => {
+		// Some environments won't always trigger 'close' after 'error'.
+		// Ensure we eventually retry.
+		wsConnecting = false;
+	});
+}
+
 function buildStateSnapshot() {
 	return {
 		heads,
@@ -84,31 +178,15 @@ function applyStateSnapshot(s) {
 }
 
 async function loadPersistedState() {
+	// We now load persisted state via WebSockets. This function remains as a boot hook.
+	// If WS never connects (blocked), we fall back to "no persistence" rather than REST.
 	try {
-		const res = await fetch(`/GameState/${encodeURIComponent(GAME_STATE_ID)}`, {
-			method: 'GET',
-			headers: { Accept: 'application/json' },
-		});
-
-		// If there is no record yet, just start fresh.
-		if (res.status === 404) {
-			stateLoaded = true;
-			return;
-		}
-
-		if (!res.ok) throw new Error(`GET /GameState failed (${res.status})`);
-
-		const record = await res.json();
-		// record is expected to be: { id, state }
-		if (record && record.state != null) {
-			applyStateSnapshot(record.state);
-		}
-
-		stateLoaded = true;
+		connectGameStateWS();
+		// Give WS a short window to respond; if nothing arrives, proceed with in-memory.
+		await new Promise((r) => setTimeout(r, 750));
+		if (!stateLoaded) stateLoaded = true;
 	} catch (err) {
-		// Non-fatal: game still works in-memory.
-		// eslint-disable-next-line no-console
-		console.warn('Failed to load persisted GameState:', err);
+		console.warn('Failed to initialize GameState WS:', err);
 		stateLoaded = true;
 	}
 }
@@ -117,21 +195,11 @@ async function persistStateNow() {
 	// Only persist after we've attempted initial load (avoid overwriting server state on boot)
 	if (!stateLoaded) return;
 
-	const payload = {
-		id: GAME_STATE_ID,
-		state: buildStateSnapshot(),
-	};
-
+	// WebSocket "save" message (server will upsert + broadcast)
 	try {
-		const res = await fetch(`/GameState/${encodeURIComponent(GAME_STATE_ID)}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-			body: JSON.stringify(payload),
-		});
-		if (!res.ok) throw new Error(`PUT /GameState failed (${res.status})`);
+		wsSend({type: 'put', id: GAME_STATE_ID, state: buildStateSnapshot() });
 	} catch (err) {
-		// eslint-disable-next-line no-console
-		console.warn('Failed to persist GameState:', err);
+		console.warn('Failed to persist GameState over WS:', err);
 	}
 }
 
@@ -731,13 +799,9 @@ if (winStartOverBtn) {
 window.addEventListener('beforeunload', () => {
 	// Avoid starting async work if we never loaded state, but if we did, attempt a final sync.
 	if (!stateLoaded) return;
-	// If supported, use sendBeacon to improve odds of delivery.
+	// Best-effort: fire a last WS save (may or may not deliver during unload)
 	try {
-		const payload = JSON.stringify({ id: GAME_STATE_ID, state: buildStateSnapshot() });
-		if (navigator.sendBeacon) {
-			const blob = new Blob([payload], { type: 'application/json' });
-			navigator.sendBeacon(`/GameState/${encodeURIComponent(GAME_STATE_ID)}`, blob);
-		}
+		if (ws && wsReady) ws.send(JSON.stringify({type: 'put', id: GAME_STATE_ID, state: buildStateSnapshot()}));
 	} catch {
 		// ignore
 	}

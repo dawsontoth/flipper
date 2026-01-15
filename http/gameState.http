@@ -1,11 +1,15 @@
 ### List
 # @no-log
-GET http://localhost:9962/GameState/
+GET http://localhost:9926/GameState/
 
 ### One
 # @no-log
-GET http://localhost:9962/GameState/default
+GET http://localhost:9926/GameState/default
 
 ### OpenAPI
 # @no-log
-GET http://localhost:9962/openapi
+GET http://localhost:9926/openapi
+
+### Delete
+# @no-log
+DELETE http://localhost:9926/GameState/
