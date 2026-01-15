@@ -37,6 +37,11 @@ body {
   box-sizing: border-box;
 }
 
+/* Global: make widths predictable so "100%"/padding doesn't create horizontal overflow */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 /* Mobile: banner becomes taller; adjust layout height + padding so content isn't clipped */
 @media (max-width: 520px) {
   .recreation-banner {
@@ -237,7 +242,10 @@ main {
   padding: 2rem;
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  width: min(980px, calc(100vw - 2rem));
+  /* Avoid 100vw-induced horizontal overflow on mobile (100vw includes scrollbar).
+     Use 100% of available width and cap it. */
+  width: 100%;
+  max-width: 980px;
   position: relative;
 }
 
@@ -770,6 +778,54 @@ h1 {
   margin-bottom: 1.25rem;
 }
 
+.reset-game-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2600;
+  padding: 0.7rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid rgba(229, 231, 235, 1);
+  background: rgba(255, 255, 255, 0.92);
+  color: #111827;
+  font-weight: 800;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.reset-game-btn:hover {
+  background: rgba(255, 255, 255, 1);
+}
+
+.reset-game-btn:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.6);
+  outline-offset: 3px;
+}
+
+/* Mobile: make it part of normal flow at the bottom of the page */
+@media (max-width: 520px) {
+  .reset-game-btn {
+    position: static;
+    display: block;
+    margin: 1.25rem auto 0.5rem auto;
+    width: calc(100% - 2rem);
+    max-width: 520px;
+    border-radius: 14px;
+  }
+
+  /* Ensure the reset button sits below the entire app, not alongside it.
+     (body is a flex container; without this, the button can become a sibling
+     flex item and share horizontal space with the main layout.) */
+  body {
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .layout {
+    width: auto;
+  }
+}
+
 .reset-link {
   position: absolute;
   top: 0.9rem;
@@ -929,7 +985,7 @@ section.shop {
 
 @media (max-width: 920px) {
   main {
-    width: min(720px, calc(100vw - 2rem));
+    max-width: 720px;
   }
 
   .layout {

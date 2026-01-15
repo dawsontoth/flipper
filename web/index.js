@@ -44,6 +44,66 @@ let wsReady = false;
 let wsQueue = [];
 let wsReconnectTimer = null;
 let wsConnecting = false;
+let wsEverOpened = false;
+let restFallbackEnabled = true; // if WS can't be used, fall back to REST
+let restInFlight = false;
+let restBackoffMs = 0;
+
+function restUrl(pathname) {
+	// Same host/port as the page (Harper REST is same origin for apps)
+	return `${location.origin}${pathname}`;
+}
+
+async function restGetState() {
+	const url = restUrl('/GameState/' + GAME_STATE_ID);
+	const res = await fetch(url, { method: 'GET' });
+	if (!res.ok) throw new Error(`REST GET failed: ${res.status}`);
+	return res.json();
+}
+
+async function restPutState(snapshot) {
+	const url = restUrl('/GameState/' + GAME_STATE_ID);
+	const res = await fetch(url, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id: GAME_STATE_ID, state: snapshot }),
+	});
+	if (!res.ok) throw new Error(`REST PUT failed: ${res.status}`);
+	return res.json().catch(() => null);
+}
+
+async function restDeleteState() {
+	const url = restUrl('/GameState/' + GAME_STATE_ID);
+	const res = await fetch(url, { method: 'DELETE' });
+	if (!res.ok) throw new Error(`REST DELETE failed: ${res.status}`);
+	return res.json().catch(() => null);
+}
+
+function clearLocalStateToDefaults() {
+	heads = 0;
+	tails = 0;
+	flipping = false;
+	headsInARow = 0;
+	maxHeadsStreak = 0;
+	cashCents = 0;
+
+	headsChance = 0.2;
+	flipTimeMs = 1000;
+	comboMult = 1.0;
+	baseWorthCents = 1;
+
+	upgrades = {
+		headsChance: 0,
+		flipTime: 0,
+		comboMult: 0,
+		baseWorth: 0,
+		autoFlip: 0,
+	};
+
+	// UI-only state
+	winShownEver = false;
+	hideWinModal();
+}
 
 function wsUrl(pathname) {
 	// Same host/port as the page, but WS protocol
@@ -76,7 +136,7 @@ function connectGameStateWS() {
 	try {
 		ws = new WebSocket(url);
 	} catch (e) {
-		// if WS is blocked, we keep running in-memory
+		// if WS is blocked, fall back to REST persistence
 		console.warn('Failed to create WebSocket:', e);
 		wsConnecting = false;
 		return;
@@ -87,6 +147,7 @@ function connectGameStateWS() {
 	ws.addEventListener('open', () => {
 		wsConnecting = false;
 		wsReady = true;
+		wsEverOpened = true;
 		flushWsQueue();
 		// Load the server state immediately on connect
 		wsSend({type: 'get', id: GAME_STATE_ID});
@@ -118,9 +179,8 @@ function connectGameStateWS() {
 	ws.addEventListener('close', () => {
 		wsConnecting = false;
 		wsReady = false;
-		// Best-effort reconnect
+		// Best-effort reconnect (and allow REST fallback while disconnected)
 		if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
-		// Exponential-ish backoff (capped) to avoid tight reconnect loops
 		const delay = 1500;
 		wsReconnectTimer = setTimeout(() => connectGameStateWS(), delay);
 	});
@@ -178,13 +238,25 @@ function applyStateSnapshot(s) {
 }
 
 async function loadPersistedState() {
-	// We now load persisted state via WebSockets. This function remains as a boot hook.
-	// If WS never connects (blocked), we fall back to "no persistence" rather than REST.
+	// Prefer WebSockets for live state, but fall back to REST if WS isn't connected.
 	try {
 		connectGameStateWS();
-		// Give WS a short window to respond; if nothing arrives, proceed with in-memory.
+		// Give WS a short window to respond; if nothing arrives, try REST.
 		await new Promise((r) => setTimeout(r, 750));
-		if (!stateLoaded) stateLoaded = true;
+
+		if (!stateLoaded) {
+			if (restFallbackEnabled && !wsReady) {
+				try {
+					const msg = await restGetState();
+					// REST returns {id, state} (or list depending on endpoint); handle single
+					if (msg && msg.state) applyStateSnapshot(msg.state);
+				} catch (e) {
+					console.warn('REST fallback load failed:', e);
+				}
+			}
+
+			stateLoaded = true;
+		}
 	} catch (err) {
 		console.warn('Failed to initialize GameState WS:', err);
 		stateLoaded = true;
@@ -195,11 +267,36 @@ async function persistStateNow() {
 	// Only persist after we've attempted initial load (avoid overwriting server state on boot)
 	if (!stateLoaded) return;
 
-	// WebSocket "save" message (server will upsert + broadcast)
+	const snapshot = buildStateSnapshot();
+
+	// Prefer WS, but if it's not connected, fall back to REST.
+	if (ws && wsReady) {
+		try {
+			wsSend({type: 'put', id: GAME_STATE_ID, state: snapshot });
+			return;
+		} catch (err) {
+			console.warn('Failed to persist GameState over WS:', err);
+		}
+	}
+
+	if (!restFallbackEnabled) return;
+	// Avoid piling up REST requests if state is changing fast
+	if (restInFlight) return;
+
+	restInFlight = true;
 	try {
-		wsSend({type: 'put', id: GAME_STATE_ID, state: buildStateSnapshot() });
+		await restPutState(snapshot);
+		restBackoffMs = 0;
 	} catch (err) {
-		console.warn('Failed to persist GameState over WS:', err);
+		console.warn('Failed to persist GameState over REST:', err);
+		// simple backoff if REST is failing
+		restBackoffMs = Math.min(30_000, Math.max(1000, restBackoffMs ? restBackoffMs * 2 : 1000));
+	} finally {
+		restInFlight = false;
+		// If we backed off, delay the next scheduled persist a bit
+		if (restBackoffMs) {
+			await new Promise((r) => setTimeout(r, restBackoffMs));
+		}
 	}
 }
 
@@ -334,6 +431,7 @@ const buyFlipTimeBtn = document.getElementById('buyFlipTime');
 const buyComboMultBtn = document.getElementById('buyComboMult');
 const buyBaseWorthBtn = document.getElementById('buyBaseWorth');
 const buyAutoFlipBtn = document.getElementById('buyAutoFlip');
+const resetGameBtn = document.getElementById('resetGameBtn');
 
 function updateStats() {
 	headsEl.textContent = heads;
@@ -795,6 +893,58 @@ if (winStartOverBtn) {
 	});
 }
 
+async function resetGame() {
+	// Turn off auto-flip if it's on (and persist that change after reset)
+	if (autoFlipEnabled) stopAutoFlip();
+
+	// Stop any pending persist timers so we don't re-save old state after reset
+	if (persistTimer) {
+		clearTimeout(persistTimer);
+		persistTimer = null;
+	}
+	if (persistMaxTimer) {
+		clearTimeout(persistMaxTimer);
+		persistMaxTimer = null;
+	}
+
+	// Best-effort delete via REST as requested
+	try {
+		await restDeleteState();
+	} catch (e) {
+		console.warn('Failed to delete GameState via REST:', e);
+	}
+
+	// Reload state:
+	// 1) clear local state to defaults
+	// 2) mark as not loaded so loadPersistedState can re-hydrate if server still has anything
+	clearLocalStateToDefaults();
+	stateLoaded = false;
+
+	// Re-load from server (WS preferred, REST fallback)
+	await loadPersistedState();
+
+	// Re-render UI
+	updateStats();
+	setResult(null);
+	updateOddsUI();
+	updateShopUI();
+}
+
+if (resetGameBtn) {
+	resetGameBtn.addEventListener('click', async () => {
+		// simple confirmation guard (avoids accidental taps)
+		const ok = confirm('Reset game? This will delete your saved GameState.');
+		if (!ok) return;
+
+		resetGameBtn.disabled = true;
+		try {
+			await resetGame();
+		} finally {
+			resetGameBtn.disabled = false;
+		}
+	});
+}
+
 // Try to persist any last changes on navigation (best-effort)
 window.addEventListener('beforeunload', () => {
 	// Avoid starting async work if we never loaded state, but if we did, attempt a final sync.
@@ -802,6 +952,14 @@ window.addEventListener('beforeunload', () => {
 	// Best-effort: fire a last WS save (may or may not deliver during unload)
 	try {
 		if (ws && wsReady) ws.send(JSON.stringify({type: 'put', id: GAME_STATE_ID, state: buildStateSnapshot()}));
+		// If WS isn't ready, do a best-effort REST save using sendBeacon if available.
+		// (fetch during unload is unreliable in many browsers)
+		else if (restFallbackEnabled && navigator.sendBeacon) {
+			const url = restUrl('/GameState/' + GAME_STATE_ID);
+			const payload = JSON.stringify({ id: GAME_STATE_ID, state: buildStateSnapshot() });
+			const blob = new Blob([payload], { type: 'application/json' });
+			navigator.sendBeacon(url, blob);
+		}
 	} catch {
 		// ignore
 	}
